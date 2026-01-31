@@ -1,0 +1,55 @@
+/* Hide sidebar collapse button */
+button[title^="keyboard_double_arrow"] {
+    display: none !important;
+}
+
+/* Sidebar background */
+[data-testid="stSidebar"] {
+    background-color: #0F172A;
+}
+
+/* Sidebar text */
+[data-testid="stSidebar"] * {
+    color: #E5E7EB;
+    font-family: 'Segoe UI', sans-serif;
+}
+
+/* Sidebar headers */
+[data-testid="stSidebar"] h1,
+[data-testid="stSidebar"] h2,
+[data-testid="stSidebar"] h3 {
+    color: #38BDF8;
+}
+
+/* Sidebar links */
+[data-testid="stSidebar"] a {
+    color: #E5E7EB;
+    text-decoration: none;
+}
+
+/* Hover */
+[data-testid="stSidebar"] a:hover {
+    background-color: #334155;
+    border-radius: 6px;
+    padding-left: 10px;
+    transition: all 0.2s ease-in-out;
+}
+
+/* Selected page */
+[aria-current="page"] {
+    background-color: #1E293B;
+    border-left: 4px solid #38BDF8;
+    border-radius: 6px;
+    padding-left: 10px;
+}
+
+/* Hide the default Streamlit sidebar collapse button (keyboard_double_arrow_*) */
+
+button[kind="header"] {
+    display: none !important;
+}
+
+/* Refuerzo para versiones nuevas de Streamlit */
+[data-testid="collapsedControl"] {
+    display: none !important;
+}
