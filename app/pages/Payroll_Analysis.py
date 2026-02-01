@@ -1,4 +1,10 @@
 from pathlib import Path
+import sys
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]  # pages -> app -> root
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
 import streamlit as st
 
 from services.loader import load_excel
@@ -6,7 +12,6 @@ from services.validators import check_columns
 from services.mergers import merge_dataframes
 from services.payroll_rules import calcular_periodos_nomina
 from services.filters import filter_dataframe
-
 
 # ------------------- Page Configuration -------------------
 st.set_page_config(
