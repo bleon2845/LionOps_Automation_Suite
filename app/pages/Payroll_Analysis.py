@@ -9,7 +9,7 @@ import streamlit as st
 
 from services.loader import load_excel
 from services.validators import check_columns
-from services.mergers import merge_dataframes
+from services.mergers import concat_dataframes, merge_dataframes
 from services.payroll_rules import calcular_periodos_nomina
 from services.filters import filter_dataframe
 from services.columns import delete_columns, delete_duplicate, new_column, new_column_with_condition, update_column
@@ -80,11 +80,12 @@ with col1:
     f_activos_retirados = st.file_uploader("Base Activos - Retirados Meli.xlsx",type=["xlsx"])
     f_conso_nomina = st.file_uploader("Conso_Nomina.xlsx",type=["xlsx"])
     f_acumulado = st.file_uploader("Acumulado_Mes.xlsx",type=["xlsx"])
+    f_personal_nacional = st.file_uploader("Base Personal Nacional.xlsx",type=["xlsx"])
 
 with col2:
-    f_personal_nacional = st.file_uploader("Base Personal Nacional.xlsx",type=["xlsx"])        
     f_prenomina = st.file_uploader("Conso_PreNomina.xlsx",type=["xlsx"])
     f_agrupaciones = st.file_uploader("Agrupaciones.xlsx",type=["xlsx"])
+    f_personal_nacionalFunza = st.file_uploader("Planta de personal DHL.xlsx",type=["xlsx"])
 
 # ------------------- Validation & Load -------------------
 all_files_ok = all([
@@ -93,7 +94,9 @@ all_files_ok = all([
     f_prenomina,
     f_acumulado,
     f_agrupaciones,
-    f_personal_nacional
+    f_personal_nacional,
+    f_personal_nacionalFunza,
+
 ])
 
 if not all_files_ok:
@@ -125,6 +128,7 @@ with st.spinner("Loading and validating files..."):
     df_acumulado = load_excel(f_acumulado, name="Acumulado_Mes")
     df_agrupaciones = load_excel(f_agrupaciones, sheet="Agrupaciones", name="Agrupaciones")
     df_personal_nacional = load_excel(f_personal_nacional, sheet="BD Personal DHL", name="Base Personal Nacional")
+    df_personalNacionalFunza = load_excel(f_personal_nacionalFunza, sheet="RETIRADOS", name="Planta de personal DHL")
 
     # ------------------- Column validation -------------------
     check_columns(df_activos, ["CEDULA", "NOMBRE DEL PUESTO", "FECHA DE INGRESO", "SALARIO MENSUAL"], "Base Activos - Activo")
@@ -134,7 +138,8 @@ with st.spinner("Loading and validating files..."):
     check_columns(df_personal_nacional, ["OPERACION", "ID", "CARGO NÓMINA", "FECHA DE INGRESO", "FECHA DE RETIRO"], "Base Personal Nacional")
     check_columns(df_agrupaciones, ["CONCEPTO", "DESCRIPCION", "AGRUPACION"], "Agrupaciones")
     check_columns(df_acumulado,["NÓMINA", "PROCESO", "AÑO PROCESO", "PERIODO PROCESO", "MES PROCESO","NUMERO DOCUMENTO", "PRIMER APELLIDO", "SEGUNDO APELLIDO", "NOMBRES","CONCEPTO", "DESCRIPCIÓN", "CANTIDAD", "MONTO", "NETO", "SMRU"],"Acumulado_Mes")
-    
+    check_columns(df_personalNacionalFunza, ["CEDULA", "CARGO DHL", "FECHA INGRESO", "FECHA RETIRO"], "Planta de personal DHL")
+
     st.success("🚀 Files loaded and validated successfully. Ready for analysis.")
 
     st.session_state["dfs_loaded"] = {
@@ -144,7 +149,8 @@ with st.spinner("Loading and validating files..."):
         "prenomina": df_prenomina,
         "acumulado": df_acumulado,
         "agrupaciones": df_agrupaciones,
-        "personal_nacional": df_personal_nacional
+        "personal_nacional": df_personal_nacional,
+        "personal_nacionalFunza": df_personalNacionalFunza,
     }
 
 # ------------------- Calculate Payroll Periods -------------------
@@ -215,8 +221,19 @@ df_personalNacional = delete_columns(
     ]
 )
 
+
 # ------------------- Insert New Columns -------------------
 df_activos = new_column(df_activos, "FECHA DE BAJA", "1990-01-01 00:00:00")
+df_personalNacionalFunza = new_column(df_personalNacionalFunza, "OPERACION", "Funza") 
+
+# ------------------- Select Relevant Columns -------------------
+df_personalNacionalFunza = delete_columns(
+    df_personalNacionalFunza,
+    columns=[
+        col for col in df_personalNacionalFunza.columns
+        if col not in ["OPERACION", "CEDULA", "CARGO DHL", "FECHA INGRESO", "FECHA RETIRO"]
+    ]
+)
 
 # ------------------- Consolidate DataFrames -------------------
 df_retirados = merge_dataframes(
@@ -259,6 +276,20 @@ df_retirados = update_column(
     new_value=df_retirados["Basico"]
 )
 
+# ------------------- Delete Column -------------------
+df_retirados = delete_columns(df_retirados, columns=["SALARIO BASICO", "Basico","Cedula"])
+
+# ------------------- Select Relevant Columns -------------------
+df_activos = delete_columns(
+    df_activos,
+    columns=[
+        col for col in df_activos.columns
+        if col not in ["CEDULA", "NOMBRE DEL PUESTO", "FECHA DE INGRESO", "FECHA DE BAJA", "SALARIO MENSUAL"]
+    ]
+)
+
+# ------------------- Concat DataFrames -------------------
+df_activos = concat_dataframes(df_activos, df_retirados, axis=0)
 
 
 
@@ -269,5 +300,15 @@ st.subheader("📋 Preview – Retired Employees (df_retirados)")
 
 st.dataframe(
     df_retirados,
+    use_container_width=True
+)
+
+st.dataframe(
+    df_activos,
+    use_container_width=True
+)
+
+st.dataframe(
+    df_personalNacionalFunza,
     use_container_width=True
 )
