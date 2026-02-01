@@ -12,6 +12,7 @@ from services.validators import check_columns
 from services.mergers import merge_dataframes
 from services.payroll_rules import calcular_periodos_nomina
 from services.filters import filter_dataframe
+from services.columns import delete_columns, delete_duplicate, new_column, new_column_with_condition, update_column
 
 # ------------------- Page Configuration -------------------
 st.set_page_config(
@@ -110,7 +111,7 @@ if not run:
 # ------------------- Validation & Load -------------------
 with st.spinner("Loading and validating files..."):
 
-    # -------- Load files --------
+    # ------------------- Load files -------------------
     dfs = load_excel(
         f_activos_retirados,
         sheets={"activos": "Activo", "retirados": "Retirado"},
@@ -125,7 +126,7 @@ with st.spinner("Loading and validating files..."):
     df_agrupaciones = load_excel(f_agrupaciones, sheet="Agrupaciones", name="Agrupaciones")
     df_personal_nacional = load_excel(f_personal_nacional, sheet="BD Personal DHL", name="Base Personal Nacional")
 
-    # -------- Column validation --------
+    # ------------------- Column validation -------------------
     check_columns(df_activos, ["CEDULA", "NOMBRE DEL PUESTO", "FECHA DE INGRESO", "SALARIO MENSUAL"], "Base Activos - Activo")
     check_columns(df_retirados, ["CEDULA", "NOMBRE DEL PUESTO", "FECHA DE INGRESO", "FECHA DE BAJA"], "Base Activos - Retirado")
     check_columns(df_conso_nomina, ["CEDULA", "CARGO NOMINA", "SALARIO BASICO"], "Conso_Nomina")
@@ -173,6 +174,100 @@ df_prenomina = filter_dataframe(
     ]
 )
 
-st.write("Conso_Nomina original:", df_conso_nomina.shape)
-st.write("Conso_Nomina filtrado:", df_consoNomina.shape)
-st.write("PreNomina filtrado:", df_prenomina.shape)
+# ------------------- Select Relevant Columns -------------------
+df_activos = delete_columns(
+    df_activos,
+    columns=[
+        col for col in df_activos.columns
+        if col not in ["CEDULA", "NOMBRE DEL PUESTO", "FECHA DE INGRESO", "SALARIO MENSUAL"]
+    ]
+)
+
+df_retirados = delete_columns(
+    df_retirados,
+    columns=[
+        col for col in df_retirados.columns
+        if col not in ["CEDULA", "NOMBRE DEL PUESTO", "FECHA DE INGRESO", "FECHA DE BAJA"]
+    ]
+)
+
+df_consoNomina = delete_columns(
+    df_conso_nomina,
+    columns=[
+        col for col in df_conso_nomina.columns
+        if col not in ["CEDULA", "CARGO NOMINA", "SALARIO BASICO"]
+    ]
+)
+
+df_preNomina = delete_columns(
+    df_prenomina,
+    columns=[
+        col for col in df_prenomina.columns
+        if col not in ["Cedula", "Basico"]
+    ]
+)
+
+df_personalNacional = delete_columns(
+    df_personal_nacional,
+    columns=[
+        col for col in df_personal_nacional.columns
+        if col not in ["OPERACION","ID", "CARGO NÓMINA", "FECHA DE INGRESO", "FECHA DE RETIRO"]
+    ]
+)
+
+# ------------------- Insert New Columns -------------------
+df_activos = new_column(df_activos, "FECHA DE BAJA", "1990-01-01 00:00:00")
+
+# ------------------- Consolidate DataFrames -------------------
+df_retirados = merge_dataframes(
+    df_left=df_retirados,
+    df_right=df_consoNomina,
+    left_key="CEDULA",
+    right_key="CEDULA",
+    how="left",
+    merge_name="Retirados vs Conso_Nomina")
+
+df_retirados = merge_dataframes(
+    df_left=df_retirados,
+    df_right=df_preNomina,
+    left_key="CEDULA",
+    right_key="Cedula",
+    how="left",
+    merge_name="Retirados vs PreNomina"
+)
+
+# ------------------- Delete Column -------------------
+df_retirados = delete_columns(df_retirados, columns=["CARGO NOMINA"])
+
+# ------------------- Delete Duplicates -------------------
+df_retirados = delete_duplicate(df_retirados, column_name="CEDULA", default_value="first")
+
+# ------------------- Insert New Columns with Condition -------------------
+df_retirados = new_column_with_condition(
+    df_retirados,
+    column_name="SALARIO MENSUAL",
+    condition=df_retirados["SALARIO BASICO"] != "",
+    value_if_true=df_retirados["SALARIO BASICO"],
+    value_if_false=df_retirados["Basico"]
+)
+
+# ------------------- Update Columns -------------------
+df_retirados = update_column(
+    df_retirados,
+    column_name="SALARIO MENSUAL",
+    condition=df_retirados["SALARIO BASICO"].isna(),
+    new_value=df_retirados["Basico"]
+)
+
+
+
+
+
+# ------------------- Display Preview -------------------
+st.divider()
+st.subheader("📋 Preview – Retired Employees (df_retirados)")
+
+st.dataframe(
+    df_retirados,
+    use_container_width=True
+)
