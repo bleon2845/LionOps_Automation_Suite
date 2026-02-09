@@ -385,34 +385,6 @@ df_activos = df_activos.rename(columns={
     "FECHA DE INGRESO_x": "FECHA DE INGRESO",
 })
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# CONTINUE WITH CHANGE THE CODE TO STREAMLIT
-
 #-------------------- VERIFICAR ARCHIVO DE ACUMULADO MES --------------------
 """ Merge para traer columna de salario"""
 df_acumulado = fusionar_dataframes(
@@ -676,6 +648,7 @@ df_acumulado["TOTAL"] = df_acumulado.apply(
     else fila["MONTO"],
     axis=1
 )
+
 
 # --------------- FUNCION PARA CREAR COLUMNAS CON SUMA DE DESCRIPCIONES ---------------
 """ Actualizar el concepto P333 con AJUS SALARIO """
@@ -962,6 +935,7 @@ df_acumulado["TIPO_DE_VINCULACIÓN"] = "DIRECTO"
 df_acumulado = df_acumulado.rename(columns={
     "MES PROCESO":"MES"})
 
+
 # --------------- COMPARATIVO DE NOMINA Y INTERFAZ ---------------
 """ Crear copia de dataframe """
 df_summ_cifrasMes = df_cifrasMes.copy()
@@ -1126,10 +1100,9 @@ df_acumulado = df_acumulado[["EMPRESA", "TIPO_DE_VINCULACIÓN", "MES",
                              "DIAS_DTO_INC_ENF_GRAL_AL",
                              "DIAS_RETROACTIV_SALARIO",
                              "DIAS_PERMISO_PERSONAL",
-                             "DIAS_AJUS_SALARIO"
-                             
+                             "DIAS_AJUS_SALARIO"                             
                              ]]
-    
+
 # --------------- UNIR ARCHIVOS DE TEMPORALES Y NOMINA ---------------
 """ Leer archivo de temporales """
 df_temp = pd.read_excel("Plantillas Facturacion y Nómina 2025 - Mercado libre.xlsx")
@@ -1416,6 +1389,7 @@ condicion = (
 df_acumulado.loc[condicion, "ESTATUS_DIAS"] = "VALIDAR"
 df_acumulado.loc[condicion, "OBSERVACION"] = "Validar Retiro"
 
+
 # ---------------- VALIDAR RETIROS DIAS VIERNES ----------------
 """ Verificar tipo datetime """
 df_acumulado["FECHA DE BAJA"] = pd.to_datetime(df_acumulado["FECHA DE BAJA"], errors="coerce")
@@ -1620,8 +1594,6 @@ lista = [
 df_acumulado[lista] = df_acumulado[lista].abs()
 df_acumulado[lista] = df_acumulado[lista].fillna(0).astype(int)
 df_acumulado["TOTAL_SUMA_DIAS"] = df_acumulado[lista].sum(axis=1)
-
-
 
 # ---------------- VERIFICACION DE DÍAS SI CUMPLE LA SUMA CON 30 DIAS ----------------
 """ Diccionario de columnas y texto asociado """
@@ -1990,6 +1962,27 @@ df_acumulado = df_acumulado.apply(
     axis=1
 )
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#Continue with change to Streamlit
 # --------------- ANALISIS TEMPORALES MES ANTERIOR ---------------
 """ cargar reporte de Horas para validar temporales """
 df_infHe = pd.read_excel("Inf Ausentismo HE RN Consolidado 2025.xlsx", sheet_name="Ausentismo")

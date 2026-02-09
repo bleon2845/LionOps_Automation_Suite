@@ -7,6 +7,7 @@ import numpy as np
 from typing import Dict, List, Optional
 
 
+
 MESES = [
     "ENERO", "FEBRERO", "MARZO", "ABRIL",
     "MAYO", "JUNIO", "JULIO", "AGOSTO",
@@ -1027,4 +1028,190 @@ def validate_days_by_novedades(
 
     return out
 
+def build_prev_month_days_columns(
+    df_acumulado: pd.DataFrame,
+    df_acumulado_ano: pd.DataFrame,
+    *,
+    nom_mes_anterior: str,
+    descripciones: List[str],
+    col_doc: str = "NUMERO DOCUMENTO",
+    col_mes_acu: str = "MES",                 
+    col_mes_ano: str = "MES PROCESO",
+    col_desc: str = "DESCRIPCIÓN",
+    col_cantidad: str = "CANTIDAD",
+    only_when_validar: bool = True,
+    col_estatus: str = "ESTATUS_DIAS",
+) -> pd.DataFrame:
+    """
+    Crea columnas tipo: "<DESCRIPCIÓN>_<nom_mes_anterior>" con la suma de CANTIDAD
+    del mes anterior por NUMERO DOCUMENTO.
+
+    Evita apply(axis=1). Usa groupby/pivot.
+    """
+    if df_acumulado.empty:
+        return df_acumulado
+
+    out = df_acumulado.copy()
+    ano = df_acumulado_ano.copy()
+
+    # Normalizar descripción en anual
+    if col_desc in ano.columns:
+        ano[col_desc] = ano[col_desc].astype(str).str.strip().str.upper()
+
+    # Filtrar descripciones objetivo
+    desc_upper = [d.strip().upper() for d in descripciones]
+    ano = ano[ano[col_desc].isin(desc_upper)].copy()
+
+    # Asegurar numéricos
+    out[col_mes_acu] = pd.to_numeric(out[col_mes_acu], errors="coerce")
+    ano[col_mes_ano] = pd.to_numeric(ano[col_mes_ano], errors="coerce")
+    ano[col_cantidad] = pd.to_numeric(ano[col_cantidad], errors="coerce").fillna(0)
+
+    # Mes anterior por fila del acumulado (1->12)
+    mes_anterior = (out[col_mes_acu].fillna(0).astype(int) - 1)
+    mes_anterior = mes_anterior.where(mes_anterior >= 1, 12)
+    out["_MES_ANTERIOR_NUM"] = mes_anterior
+
+    # Traer el mes anterior a cada documento:
+    # hacemos merge (doc -> mes_anterior esperado) y filtramos anual a ese mes
+    map_mes_ant = out[[col_doc, "_MES_ANTERIOR_NUM"]].drop_duplicates()
+    ano = ano.merge(map_mes_ant, on=col_doc, how="inner")
+    ano = ano[ano[col_mes_ano] == ano["_MES_ANTERIOR_NUM"]]
+
+    # Sumar por documento+desc
+    grp = (
+        ano.groupby([col_doc, col_desc], as_index=False)[col_cantidad]
+        .sum()
+    )
+
+    # Pivot a columnas por descripción
+    piv = grp.pivot(index=col_doc, columns=col_desc, values=col_cantidad).fillna(0)
+
+    # Renombrar columnas agregando _NOMMESANTERIOR
+    suffix = "_" + str(nom_mes_anterior).upper()
+    piv.columns = [f"{c}{suffix}" for c in piv.columns]
+    piv = piv.reset_index()
+
+    # Merge al acumulado
+    out = out.merge(piv, on=col_doc, how="left")
+
+    # Rellenar NaN en nuevas columnas con 0
+    new_cols = [c for c in out.columns if c.endswith(suffix)]
+    out[new_cols] = out[new_cols].fillna(0)
+
+    # Si solo aplica cuando ESTATUS=VALIDAR, poner 0 a los demás
+    if only_when_validar and col_estatus in out.columns:
+        mask_no = out[col_estatus] != "VALIDAR"
+        out.loc[mask_no, new_cols] = 0
+
+    # Asegurar que VACACIONES EN DINERO exista aunque no se sume
+    col_vac_din = f"VACACIONES EN DINERO{suffix}"
+    if col_vac_din not in out.columns:
+        out[col_vac_din] = 0
+
+    # Total suma días mes anterior (excluye VACACIONES EN DINERO)
+    cols_suma = [f"{d.strip().upper()}{suffix}" for d in descripciones if d.strip().upper() != "VACACIONES EN DINERO"]
+    cols_exist = [c for c in cols_suma if c in out.columns]
+    out["TOTAL_SUMA_DIAS_MESANTERIOR"] = out[cols_exist].sum(axis=1) if cols_exist else 0
+
+    out.drop(columns=["_MES_ANTERIOR_NUM"], inplace=True)
+    return out
+
+def validate_prev_month_vacations(
+    df: pd.DataFrame,
+    *,
+    dias_mes_actual: int,
+    dias_mes_anterior: int,
+    empresa_value: str = "SUPPLA S.A",
+    col_empresa: str = "EMPRESA",
+    col_estatus: str = "ESTATUS_DIAS",
+    col_obs: str = "OBSERVACION",
+    col_total_prev: str = "TOTAL_SUMA_DIAS_MESANTERIOR",
+    col_dias_pago: str = "DIAS_PAGO_NOMINA",
+    col_dias_sueldo_basico: str = "DIAS_SUELDO_BASICO",
+) -> pd.DataFrame:
+    """
+    Regla:
+    - Si (TOTAL_SUMA_DIAS_MESANTERIOR + DIAS_PAGO_NOMINA) cuadra (60 o 30+mesAnterior),
+      marcar OK y observación "X Dias Vacaciones Pagas Mes Anterior"
+    """
+    if df.empty:
+        return df
+
+    out = df.copy()
+
+    for c in [col_total_prev, col_dias_pago, col_dias_sueldo_basico]:
+        if c not in out.columns:
+            out[c] = 0
+
+    out[col_total_prev] = pd.to_numeric(out[col_total_prev], errors="coerce").fillna(0)
+    out[col_dias_pago] = pd.to_numeric(out[col_dias_pago], errors="coerce").fillna(0)
+    out[col_dias_sueldo_basico] = pd.to_numeric(out[col_dias_sueldo_basico], errors="coerce").fillna(0)
+
+    base = (out[col_estatus] == "VALIDAR") & (out[col_empresa] == empresa_value)
+
+    if int(dias_mes_actual) == 31:
+        cond = base & ((out[col_total_prev] + out[col_dias_pago]) == 60)
+    elif int(dias_mes_actual) == 30:
+        cond = base & ((out[col_total_prev] + out[col_dias_pago]) == (int(dias_mes_actual) + int(dias_mes_anterior)))
+    else:
+        cond = pd.Series(False, index=out.index)
+
+    dias_restantes = (int(dias_mes_actual) - out.loc[cond, col_dias_sueldo_basico].round().astype(int))
+
+    out.loc[cond, col_estatus] = "OK"
+    out.loc[cond, col_obs] = dias_restantes.astype(str) + " Dias Vacaciones Pagas Mes Anterior"
+    return out
+
+def validate_prev_month_unpaid_days_for_new_hires(
+    df: pd.DataFrame,
+    *,
+    nom_mes_anterior: str,
+    dias_mes_actual: int,
+    empresa_value: str = "SUPPLA S.A",
+    col_empresa: str = "EMPRESA",
+    col_estatus: str = "ESTATUS_DIAS",
+    col_obs: str = "OBSERVACION",
+    col_fecha_ingreso: str = "FECHA DE INGRESO",
+    col_dias_pago: str = "DIAS_PAGO_NOMINA",
+) -> pd.DataFrame:
+    """
+    Equivalente a validar_nomina_mes_anterior:
+    - Si columna SUELDO BASICO_<MESANT> existe y es 0
+    - y FECHA DE INGRESO no es NaT
+    - calcula dias_mes_anterior = (30 - dia_ingreso) + 1
+    - si (dias_mes_anterior + dias_mes_actual) == DIAS_PAGO_NOMINA -> OK
+    """
+    if df.empty:
+        return df
+
+    out = df.copy()
+
+    col_sueldo_prev = f"SUELDO BASICO_{str(nom_mes_anterior).upper()}"
+    if col_sueldo_prev not in out.columns:
+        return out  # no hay dato para validar
+
+    out[col_sueldo_prev] = pd.to_numeric(out[col_sueldo_prev], errors="coerce").fillna(0)
+    out[col_dias_pago] = pd.to_numeric(out[col_dias_pago], errors="coerce").fillna(0)
+    out[col_fecha_ingreso] = pd.to_datetime(out[col_fecha_ingreso], errors="coerce")
+
+    base = (out[col_estatus] == "VALIDAR") & (out[col_empresa] == empresa_value)
+
+    mask = base & (out[col_sueldo_prev] == 0) & out[col_fecha_ingreso].notna()
+
+    dia_ingreso = out.loc[mask, col_fecha_ingreso].dt.day
+    dias_mes_anterior = (30 - dia_ingreso) + 1
+
+    ok = (dias_mes_anterior + int(dias_mes_actual)) == out.loc[mask, col_dias_pago]
+
+    idx_ok = out.loc[mask].index[ok]
+
+    out.loc[idx_ok, col_estatus] = "OK"
+    out.loc[idx_ok, col_obs] = (
+        "30 Dias Trabajados "
+        + dias_mes_anterior.loc[ok].astype(int).astype(str)
+        + " Dias Trabajados Mes Anterior"
+    )
+
+    return out
 

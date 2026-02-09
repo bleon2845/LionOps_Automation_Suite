@@ -1,6 +1,7 @@
 from pathlib import Path
 import sys
 from datetime import datetime
+import pandas as pd
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]  # pages -> app -> root
@@ -12,7 +13,7 @@ import streamlit as st
 from services.loader import load_excel
 from services.validators import check_columns
 from services.mergers import concat_dataframes, merge_dataframes
-from services.payroll_rules import calcular_periodos_nomina, calculate_for_concept, check_quantity_with_salary, config_days_month_rules, execute_analysis_days_payroll, get_days_month, pivot_sum, total_by_group_first_row, validate_days_by_novedades, validate_offboarding_weekdays, validate_salary_role_previous_month, validate_vinculation_change
+from services.payroll_rules import build_prev_month_days_columns, calcular_periodos_nomina, calculate_for_concept, check_quantity_with_salary, config_days_month_rules, execute_analysis_days_payroll, get_days_month, pivot_sum, total_by_group_first_row, validate_days_by_novedades, validate_offboarding_weekdays, validate_prev_month_unpaid_days_for_new_hires, validate_prev_month_vacations, validate_salary_role_previous_month, validate_vinculation_change
 from services.filters import filter_dataframe, filter_by_operator, filter_by_prefix
 import services.columns as col
 
@@ -1231,9 +1232,72 @@ df_acumulado = validate_days_by_novedades(df_acumulado,dias_mes_actual=days_curr
 
 
 
+# ---------------- GET DAYS OF PREV MONTH ----------------
+# Strip whitespace from "DESCRIPCIÓN" column in df_acumuladoAño to ensure consistency in merging and comparisons
+df_acumuladoAño = col.strip_column(df_acumuladoAño, column_name="DESCRIPCIÓN")
 
+# P333 -> AJUS SALARIO
+cond = df_acumuladoAño["CONCEPTO"] == "P333"
+df_acumuladoAño = col.update_column(df_acumuladoAño, "DESCRIPCIÓN", cond, "AJUS SALARIO")
 
+# Change data type of "MES" and "MES PROCESO" to numeric, coercing errors to NaN
+df_acumulado["MES"] = pd.to_numeric(df_acumulado["MES"], errors="coerce")
+df_acumuladoAño["MES PROCESO"] = pd.to_numeric(df_acumuladoAño["MES PROCESO"], errors="coerce")
 
+# List of descriptions to compare between current month and previous month for creating new columns with sum of "TOTAL DIAS" for previous month concepts
+list_concepts_prevmonth = [
+    "SUELDO BASICO",
+    "CALAMIDAD DOMESTICA",
+    "DÍA FAMILIAR",
+    "SANCION / SUSPENSION",
+    "LICENCIA NO REMUN",
+    "INASISTENCIA INJUST",
+    "VACACIONES",
+    "VACACIONES EN DINERO",
+    "GASTO INCAPACIDAD",
+    "LIC LEY MARIA 8 DIAS",
+    "INCAPACIDAD ACC TRAB",
+    "INCAP ENFERMEDAD GEN",
+    "LICENCIA MATERNIDAD",
+    "VAC HABILES SAL INT",
+    "INCAPACIDAD AL 50%",
+    "DÍA NO LAB DER A PAG",
+    "RTEGRO DTO INASISTEN",
+    "AJS  LICENCIA MATERN",
+    "INCAP ENF GEN PRORR",    
+    "VACACIONES FESTIVAS",
+    "DTO SALARIO",
+    "INASIS X INC > 180 D",
+    "DTO INC ENF GRAL AL",
+    "AJUS SALARIO"
+]
+
+# Execute function to create new columns with sum of "TOTAL DIAS" for previous month concepts based on the list and rules of days of month, merging with df_acumuladoAño for previous month data
+df_acumulado = build_prev_month_days_columns(
+    df_acumulado=df_acumulado,
+    df_acumulado_ano=df_acumuladoAño,
+    nom_mes_anterior=nomMesAnterior,
+    descripciones=list_concepts_prevmonth,
+)
+
+# Get number of days in previous month based on rules and assign it to a variable
+days_prev_month = config_days_month_rules(get_days_month(nomMesAnterior, anio_actual), base=30)
+
+# Check Vacations of previous month and create new columns with observations based on rules for days of month and merging with df_acumuladoAño for previous month data
+df_acumulado = validate_prev_month_vacations(
+    df_acumulado,
+    dias_mes_actual=days_current_month,
+    dias_mes_anterior=days_prev_month,
+    empresa_value="SUPPLA S.A",
+)
+
+# Check Unpaid Days of previous month for new hires and create new columns with observations based on rules for days of month and merging with df_acumuladoAño for previous month data
+df_acumulado = validate_prev_month_unpaid_days_for_new_hires(
+    df_acumulado,
+    nom_mes_anterior=nomMesAnterior,
+    dias_mes_actual=days_current_month,
+    empresa_value="SUPPLA S.A",
+)
 
 
 
@@ -1249,4 +1313,9 @@ st.dataframe(
     df_acumulado,
     use_container_width=True
 )
+
+if st.button("Export to Excel"):
+    output_path = "df_acumulado_resultado.xlsx"
+    df_acumulado.to_excel(output_path, index=False)
+    st.success(f"Exported: {output_path}")
 
