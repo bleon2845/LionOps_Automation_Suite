@@ -1,0 +1,17 @@
+# --- Virtual environments ---
+lionOps/
+.venv/
+venv/
+env/
+
+# --- Python cache ---
+__pycache__/
+*.pyc
+
+# --- Streamlit secrets ---
+.streamlit/secrets.toml
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+.vscode/
