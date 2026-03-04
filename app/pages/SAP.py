@@ -12,6 +12,7 @@ import pythoncom
 from integrations.sap.sap_gui import SapGUI
 from integrations.sap.facade import SapFacade
 from integrations.sap.create_order import CreateOrder
+from integrations.sap.save_docs import SaveDocs
 import os
 import pandas as pd
 
@@ -23,7 +24,7 @@ st.set_page_config(page_title="SAP RPA Dashboard", layout="wide")
 if 'sap_facade' not in st.session_state:
     try:
         # Inicializamos el hilo COM para evitar errores de hilos en servidores web
-        pythoncom.CoInitialize() 
+        pythoncom.CoInitialize()
         gui = SapGUI()
         st.session_state.sap_facade = SapFacade(gui)
         st.session_state.logged_in = False
@@ -71,7 +72,7 @@ with col_actions:
         st.info("Estatus: Esperando conexión para habilitar comandos.")
     else:
         # Aquí puedes agregar botones para tus otras clases (CreateOrder, etc.)
-        tab1, tab2 = st.tabs(["Pedidos (ME21N)", "Pedidos (MB21)"])
+        tab1, tab2, tab3 = st.tabs(["Pedidos (ME21N)", "Pedidos (MB21)", "Print Documents"])
         
         with tab1:
             st.write("### Ejecutar creación de pedidos masiva (ME21N)")
@@ -121,6 +122,53 @@ with col_actions:
             st.write("Generación de documentos MB21.")
             if st.button("📋 Iniciar MB21"):
                 st.info("Procesando datos...")
+
+        with tab3:
+            st.write("### 🖨️ Generación de documentos PDF (MB02)")
+
+            # 1. Cargador de archivo único para esta pestaña
+            uploaded_print = st.file_uploader("Subir Archivo de Impresión", type=["xlsx"], key="uploaddocs")
+
+            if uploaded_print:
+                try:
+                    # Vista previa
+                    df_print = pd.read_excel(uploaded_print, sheet_name='Print')
+                    st.write("#### 📊 Vista previa de documentos a imprimir:")
+                    st.dataframe(df_print, use_container_width=True)
+                    
+                    # 2. Carpeta de salida
+                    output_path = os.path.join(os.getcwd(), "PDF_Outputs")
+                    if not os.path.exists(output_path):
+                        os.makedirs(output_path)
+
+                    # 3. Botón de ejecución (SOLO UNO)
+                    if st.button("🚀 Iniciar Proceso de Impresión", use_container_width=True):
+                        try:
+                            # Guardar temporalmente el Excel
+                            temp_print_path = os.path.join(os.getcwd(), "temp_print.xlsx")
+                            with open(temp_print_path, "wb") as f:
+                                f.write(uploaded_print.getbuffer())
+
+                            with st.status("Ejecutando impresión en SAP...", expanded=True) as status:
+                                pythoncom.CoInitialize()
+                                # Instanciamos el bot (asegúrate de que SaveDocs no pida parámetros en __init__)
+                                bot_print = SaveDocs() 
+                                
+                                # LLAMADA CORRECTA a la lógica de SAP
+                                bot_print.print_documents(temp_print_path, output_path)
+                                
+                                status.update(label="✅ Impresión Completada", state="complete")
+                                st.success(f"Documentos guardados en: {output_path}")
+
+                            # Limpiar temporal
+                            if os.path.exists(temp_print_path):
+                                os.remove(temp_print_path)
+
+                        except Exception as e:
+                            st.error(f"Error durante la ejecución: {e}")
+
+                except Exception as e:
+                    st.error(f"No se encontró la hoja 'Print' o el archivo es inválido: {e}")
 
 # --- FOOTER / STATUS ---
 st.sidebar.markdown("### Estado del Sistema")

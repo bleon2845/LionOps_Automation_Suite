@@ -3,17 +3,26 @@ import pandas as pd
 import pyautogui
 import os
 import win32gui
+import win32com.client
 import threading
 from datetime import datetime
 import shutil
 
 from integrations.sap import session
-
+import pythoncom
 
 
 class SaveDocs():
-    def __init__(self, sap_session):
-        self.session = sap_session
+    def __init__(self):
+        pythoncom.CoInitialize()
+        try:
+            # Nos conectamos a la instancia de SAP que ya está abierta en Windows
+            SapGuiAuto = win32com.client.GetObject("SAPGUI")
+            application = SapGuiAuto.GetScriptingEngine
+            connection = application.Children(0)
+            self.session = connection.Children(0) # Esto toma la sesión activa
+        except Exception as e:
+            raise Exception(f"No se pudo enganchar a la sesión de SAP activa: {e}")
 
     def save_pdf(self, full_path: str, timeout: float = 40.0):
         
