@@ -16,17 +16,17 @@ class SaveDocs():
     def __init__(self):
         pythoncom.CoInitialize()
         try:
-            # Nos conectamos a la instancia de SAP que ya está abierta en Windows
+            # We connect to the already open instance of SAP in Windows
             SapGuiAuto = win32com.client.GetObject("SAPGUI")
             application = SapGuiAuto.GetScriptingEngine
             connection = application.Children(0)
-            self.session = connection.Children(0) # Esto toma la sesión activa
+            self.session = connection.Children(0) # This takes the active session
         except Exception as e:
             raise Exception(f"No se pudo enganchar a la sesión de SAP activa: {e}")
 
     def save_pdf(self, full_path: str, timeout: float = 40.0):
         
-        TARGET_CLASSES = {"#32770", "Xaml_WindowedPopupClass"}# Class names to look for
+        TARGET_CLASSES = {"#32770", "Xaml_WindowedPopupClass"}
 
         def _find_file_dialog():
             found = None

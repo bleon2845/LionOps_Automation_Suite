@@ -2,6 +2,7 @@ from integrations.sap.create_order_MB21 import CreateOrderMB21
 from integrations.sap.sap_gui import SapGUI
 from integrations.sap.create_order import CreateOrder
 from integrations.sap.save_docs import SaveDocs
+from integrations.sap.mb5t import Mb5t
 
 class SapFacade:
 
@@ -10,6 +11,7 @@ class SapFacade:
         self._create_order: CreateOrder | None = None
         self._save_docs_service: SaveDocs | None = None
         self._create_order_mb21: CreateOrderMB21 | None = None
+        self._mb5t_service: Mb5t | None = None
 
     #------------ Connection and Login -------------
     def _ensure_session(self, system_name: str = None,index: int = None):
@@ -68,6 +70,13 @@ class SapFacade:
             self._save_docs_service = SaveDocs(self.sap.session)
         
         self._save_docs_service.save_docs(df_print, output_folder, pdf_base_path)
+
+    def download_mb5t(self):
+       self._ensure_session()
+       
+       if not self._mb5t_service:
+            self._mb5t_service = Mb5t(self.sap.session)
+       self._mb5t_service.downloadmb5t()
 
 
 
