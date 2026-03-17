@@ -3,6 +3,7 @@ from integrations.sap.sap_gui import SapGUI
 from integrations.sap.create_order import CreateOrder
 from integrations.sap.save_docs import SaveDocs
 from integrations.sap.mb5t import Mb5t
+from integrations.sap.zm02 import Z02RTPTR
 
 class SapFacade:
 
@@ -78,8 +79,10 @@ class SapFacade:
             self._mb5t_service = Mb5t(self.sap.session)
        self._mb5t_service.downloadmb5t()
 
-
-
-
+    def download_z02(self):
+        self._ensure_session()
+        if not self._z02_service:
+            self._z02_service = Z02RTPTR(self.sap.session)
+        self._z02_service.download_Z02RTPTR()
 
 
